@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Myanmar Checkers AI</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            margin-bottom: 15px;
+        }
+
+        select,
+        button {
+            padding: 8px 12px;
+            margin: 5px;
+            font-size: 15px;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        #status {
+            font-weight: bold;
+            margin: 12px 0;
+            min-height: 22px;
+        }
+
+        .game-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            border: 4px solid #333;
+        }
+
+        .cell {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
+        .light {
+            background: #e8d7b5;
+        }
+
+        .dark {
+            background: #7a5136;
+            cursor: pointer;
+        }
+
+        .selected {
+            outline: 4px solid #ffd700;
+            outline-offset: -4px;
+        }
+
+        .possible {
+            box-shadow: inset 0 0 0 4px #4caf50;
+        }
+
+        .piece {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+        }
+
+        .x-piece {
+                background: white;
+                color: black;
+                border: 2px solid #333;
+        }
+
+        .o-piece {
+                background: #222;
+                color: white;
+        }
+
+        .king {
+            border: 4px solid gold;
+        }
+
+        .info-panel {
+            width: 280px;
+            background: white;
+            padding: 18px;
+            border-radius: 8px;
+            text-align: left;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .info-panel h2 {
+            margin-top: 0;
+        }
+
+        .info-row {
+            margin: 10px 0;
+        }
+
+        #candidateScores {
+            font-size: 13px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .legend {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        @media (max-width: 650px) {
+            #board {
+                grid-template-columns: repeat(8, 42px);
+                grid-template-rows: repeat(8, 42px);
+            }
+
+            .cell {
+                width: 42px;
+                height: 42px;
+            }
+
+            .piece {
+                width: 30px;
+                height: 30px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Myanmar Checkers AI</h1>
+
+    <div class="subtitle">
+        Human vs Artificial Intelligence
+    </div>
+
+    <div class="controls">
+
+        <label for="difficulty">
+            AI Difficulty:
+        </label>
+
+        <select id="difficulty">
+            <option value="easy">
+                Easy - Random
+            </option>
+
+            <option value="medium">
+                Medium - Heuristic
+            </option>
+
+            <option value="hard" selected>
+                Hard - Minimax
+            </option>
+        </select>
+
+        <button onclick="resetGame()">
+            New Game
+        </button>
+
+    </div>
+
+    <div id="status">
+        Loading game...
+    </div>
+
+    <div class="game-container">
+
+        <div id="board"></div>
+
+        <div class="info-panel">
+
+            <h2>Game Information</h2>
+
+            <div class="info-row">
+                <strong>You:</strong>
+                White / X
+            </div>
+
+            <div class="info-row">
+                <strong>AI:</strong>
+                Black O
+            </div>
+
+            <div class="info-row">
+                <strong>Current Turn:</strong>
+                <span id="turn">-</span>
+            </div>
+
+            <hr>
+
+            <h2>AI Search</h2>
+
+            <div class="info-row">
+                <strong>Agent:</strong>
+                <span id="aiName">-</span>
+            </div>
+
+            <div class="info-row">
+                <strong>Nodes Explored:</strong>
+                <span id="nodes">-</span>
+            </div>
+
+            <div class="info-row">
+                <strong>Alpha-Beta Cutoffs:</strong>
+                <span id="cutoffs">-</span>
+            </div>
+
+            <div class="info-row">
+                <strong>AI Move:</strong>
+                <span id="aiMove">-</span>
+            </div>
+
+            <hr>
+
+            <strong>Candidate Move Scores</strong>
+
+            <div id="candidateScores">
+                No AI decision yet.
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="legend">
+        Click one of your red pieces, then click the highlighted destination.
+        Captures are mandatory when available.
+    </div>
+
+
+    <script>
+
+        let gameState = null;
+        let legalMoves = [];
+        let selectedPath = [];
+
+
+        // =====================================================
+        // LOAD GAME
+        // =====================================================
+
+        async function loadGame() {
+
+            const response = await fetch("/state");
+            gameState = await response.json();
+
+            renderBoard();
+            updateStatus();
+
+            if (
+                !gameState.game_over &&
+                gameState.current_player === "x"
+            ) {
+                await loadLegalMoves();
+            }
+        }
+
+
+        // =====================================================
+        // LOAD LEGAL MOVES
+        // =====================================================
+
+        async function loadLegalMoves() {
+
+            const response = await fetch("/legal-moves");
+            const data = await response.json();
+
+            legalMoves = data.moves || [];
+
+            renderBoard();
+        }
+
+
+        // =====================================================
+        // BOARD
+        // =====================================================
+
+        function renderBoard() {
+
+            const boardElement =
+                document.getElementById("board");
+
+            boardElement.innerHTML = "";
+
+            for (let row = 0; row < 8; row++) {
+
+                for (let col = 0; col < 8; col++) {
+
+                    const cell =
+                        document.createElement("div");
+
+                    cell.className = "cell";
+
+                    if ((row + col) % 2 === 0) {
+                        cell.classList.add("light");
+                    } else {
+                        cell.classList.add("dark");
+                    }
+
+
+                    // Selected path
+                    if (
+                        selectedPath.some(
+                            position =>
+                                position[0] === row &&
+                                position[1] === col
+                        )
+                    ) {
+                        cell.classList.add("selected");
+                    }
+
+
+                    // Possible next positions
+                    const nextPositions =
+                        getPossibleNextPositions();
+
+                    if (
+                        nextPositions.some(
+                            position =>
+                                position[0] === row &&
+                                position[1] === col
+                        )
+                    ) {
+                        cell.classList.add("possible");
+                    }
+
+
+                    const piece =
+                        gameState.board[row][col];
+
+                    if (piece !== ".") {
+
+                        const pieceElement =
+                            document.createElement("div");
+
+                        pieceElement.classList.add("piece");
+
+                        if (piece.toLowerCase() === "x") {
+                            pieceElement.classList.add("x-piece");
+                        } else {
+                            pieceElement.classList.add("o-piece");
+                        }
+
+                        if (piece === "X" || piece === "O") {
+                            pieceElement.classList.add("king");
+                            pieceElement.textContent = "K";
+                        }
+
+                        cell.appendChild(pieceElement);
+                    }
+
+
+                    cell.onclick = () =>
+                        handleCellClick(row, col);
+
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+
+        // =====================================================
+        // HUMAN MOVE SELECTION
+        // =====================================================
+
+        function handleCellClick(row, col) {
+
+            if (
+                !gameState ||
+                gameState.game_over ||
+                gameState.current_player !== "x"
+            ) {
+                return;
+            }
+
+            const clicked = [row, col];
+
+
+            // -----------------------------------------------
+            // Select starting piece
+            // -----------------------------------------------
+
+            if (selectedPath.length === 0) {
+
+                const validStart =
+                    legalMoves.some(
+                        move =>
+                            samePosition(
+                                move.path[0],
+                                clicked
+                            )
+                    );
+
+                if (validStart) {
+
+                    selectedPath = [clicked];
+
+                    renderBoard();
+                }
+
+                return;
+            }
+
+
+            // -----------------------------------------------
+            // Check next step in move path
+            // -----------------------------------------------
+
+            const matchingMoves =
+                legalMoves.filter(
+                    move =>
+                        pathMatchesPrefix(
+                            move.path,
+                            selectedPath
+                        )
+                );
+
+
+            const validNext =
+                matchingMoves.filter(
+                    move =>
+                        move.path.length >
+                        selectedPath.length
+                        &&
+                        samePosition(
+                            move.path[
+                                selectedPath.length
+                            ],
+                            clicked
+                        )
+                );
+
+
+            if (validNext.length === 0) {
+
+                // Allow selecting another piece
+                const newStart =
+                    legalMoves.some(
+                        move =>
+                            samePosition(
+                                move.path[0],
+                                clicked
+                            )
+                    );
+
+                if (newStart) {
+                    selectedPath = [clicked];
+                } else {
+                    selectedPath = [];
+                }
+
+                renderBoard();
+
+                return;
+            }
+
+
+            selectedPath.push(clicked);
+
+
+            const completeMoves =
+                legalMoves.filter(
+                    move =>
+                        move.path.length ===
+                        selectedPath.length
+                        &&
+                        pathMatchesPrefix(
+                            move.path,
+                            selectedPath
+                        )
+                );
+
+
+            if (completeMoves.length > 0) {
+
+                submitMove(
+                    completeMoves[0].path
+                );
+
+                return;
+            }
+
+
+            renderBoard();
+        }
+
+
+        // =====================================================
+        // POSSIBLE DESTINATIONS
+        // =====================================================
+
+        function getPossibleNextPositions() {
+
+            if (selectedPath.length === 0) {
+                return [];
+            }
+
+            const positions = [];
+
+            for (const move of legalMoves) {
+
+                if (
+                    pathMatchesPrefix(
+                        move.path,
+                        selectedPath
+                    )
+                    &&
+                    move.path.length >
+                    selectedPath.length
+                ) {
+
+                    const next =
+                        move.path[
+                            selectedPath.length
+                        ];
+
+                    if (
+                        !positions.some(
+                            position =>
+                                samePosition(
+                                    position,
+                                    next
+                                )
+                        )
+                    ) {
+                        positions.push(next);
+                    }
+                }
+            }
+
+            return positions;
+        }
+
+
+        // =====================================================
+        // SEND HUMAN MOVE TO FLASK
+        // =====================================================
+
+        async function submitMove(path) {
+
+            document.getElementById("status")
+                .textContent =
+                "AI is thinking...";
+
+            const difficulty =
+                document.getElementById(
+                    "difficulty"
+                ).value;
+
+
+            const response = await fetch(
+                "/move",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        path: path,
+                        difficulty: difficulty
+                    })
+                }
+            );
+
+
+            const data = await response.json();
+
+
+            if (!response.ok) {
+
+                alert(
+                    data.error ||
+                    "Move failed."
+                );
+
+                selectedPath = [];
+
+                await loadGame();
+
+                return;
+            }
+
+
+            gameState = data;
+
+            selectedPath = [];
+
+            showAIInformation(data);
+
+            renderBoard();
+            updateStatus();
+
+
+            if (
+                !gameState.game_over &&
+                gameState.current_player === "x"
+            ) {
+                await loadLegalMoves();
+            }
+        }
+
+
+        // =====================================================
+        // AI INFORMATION
+        // =====================================================
+
+        function showAIInformation(data) {
+
+            document.getElementById(
+                "aiName"
+            ).textContent =
+                data.ai_name || "-";
+
+
+            document.getElementById(
+                "nodes"
+            ).textContent =
+                data.nodes_explored ?? "-";
+
+
+            document.getElementById(
+                "cutoffs"
+            ).textContent =
+                data.cutoffs ?? "-";
+
+
+            if (
+                data.ai_move &&
+                data.ai_move.path
+            ) {
+
+                document.getElementById(
+                    "aiMove"
+                ).textContent =
+                    formatPath(
+                        data.ai_move.path
+                    );
+
+            } else {
+
+                document.getElementById(
+                    "aiMove"
+                ).textContent = "-";
+            }
+
+
+            const scoreElement =
+                document.getElementById(
+                    "candidateScores"
+                );
+
+
+            if (
+                data.candidate_scores &&
+                data.candidate_scores.length > 0
+            ) {
+
+                scoreElement.innerHTML = "";
+
+                data.candidate_scores.forEach(
+                    item => {
+
+                        const line =
+                            document.createElement(
+                                "div"
+                            );
+
+                        line.textContent =
+                            formatPath(
+                                item.move.path
+                            )
+                            +
+                            " → "
+                            +
+                            item.score;
+
+                        scoreElement.appendChild(
+                            line
+                        );
+                    }
+                );
+
+            } else {
+
+                scoreElement.textContent =
+                    "No candidate scores available.";
+            }
+        }
+
+
+        // =====================================================
+        // GAME STATUS
+        // =====================================================
+
+        function updateStatus() {
+
+            const status =
+                document.getElementById(
+                    "status"
+                );
+
+            const turn =
+                document.getElementById(
+                    "turn"
+                );
+
+
+            if (gameState.winner) {
+
+                if (
+                    gameState.winner === "x"
+                ) {
+                    status.textContent =
+                        "Game Over — You Win!";
+                } else {
+                    status.textContent =
+                        "Game Over — AI Wins!";
+                }
+
+                turn.textContent = "-";
+
+                return;
+            }
+
+
+            if (gameState.draw) {
+
+                status.textContent =
+                    "Game Over — Draw.";
+
+                turn.textContent = "-";
+
+                return;
+            }
+
+
+            if (
+                gameState.current_player === "x"
+            ) {
+
+                status.textContent =
+                    "Your turn. Select a white piece.";
+
+                turn.textContent =
+                    "Human (X)";
+
+            } else {
+
+                status.textContent =
+                    "AI turn.";
+
+                turn.textContent =
+                    "AI (O)";
+            }
+        }
+
+
+        // =====================================================
+        // RESET
+        // =====================================================
+
+        async function resetGame() {
+
+            await fetch(
+                "/reset",
+                {
+                    method: "POST"
+                }
+            );
+
+            selectedPath = [];
+            legalMoves = [];
+
+            document.getElementById(
+                "aiName"
+            ).textContent = "-";
+
+            document.getElementById(
+                "nodes"
+            ).textContent = "-";
+
+            document.getElementById(
+                "cutoffs"
+            ).textContent = "-";
+
+            document.getElementById(
+                "aiMove"
+            ).textContent = "-";
+
+            document.getElementById(
+                "candidateScores"
+            ).textContent =
+                "No AI decision yet.";
+
+            await loadGame();
+        }
+
+
+        // =====================================================
+        // HELPERS
+        // =====================================================
+
+        function samePosition(a, b) {
+
+            return (
+                a[0] === b[0]
+                &&
+                a[1] === b[1]
+            );
+        }
+
+
+        function pathMatchesPrefix(
+            fullPath,
+            prefix
+        ) {
+
+            if (
+                prefix.length >
+                fullPath.length
+            ) {
+                return false;
+            }
+
+
+            for (
+                let i = 0;
+                i < prefix.length;
+                i++
+            ) {
+
+                if (
+                    !samePosition(
+                        fullPath[i],
+                        prefix[i]
+                    )
+                ) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+
+        function formatPath(path) {
+
+            return path
+                .map(
+                    position =>
+                        "("
+                        + position[0]
+                        + ","
+                        + position[1]
+                        + ")"
+                )
+                .join(" → ");
+        }
+
+
+        // =====================================================
+        // START APPLICATION
+        // =====================================================
+
+        loadGame();
+
+    </script>
+
+</body>
+</html>
