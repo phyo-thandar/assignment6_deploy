@@ -43,7 +43,7 @@
 ## Section 4: Deployed and Presentation Information
 - **Deployment Platform:** Render
 - **Live Deployment URL:** [Provide your live deployment site URL here]
-- **Video Presentation Link:** [Provide an accessible link to your 5–7 minute video presentation]
+- **Video Presentation Link:** https://assignment6-myanmar-checkers-ai.onrender.com
 
 ---
 
